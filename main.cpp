@@ -15,7 +15,88 @@ path operator""_p(const char* data, std::size_t sz) {
 }
 
 // напишите эту функцию
-bool Preprocess(const path& in_file, const path& out_file, const vector<path>& include_directories);
+bool Preprocessor(ifstream& in, ofstream& out, const path& current_path, const vector<path>& include_directories) {
+
+    int line_numb = 0;
+
+    string hd;
+    static regex num_reg1(R"/(\s*#\s*include\s*"([^"]*)"\s*)/");  // сырой литерал #include "..."
+    static regex num_reg2(R"/(\s*#\s*include\s*<([^>]*)>\s*)/");  // сырой литерал #include <...>
+    smatch m;
+    
+    while (getline(in, hd)) {
+
+    ++line_numb;
+    ifstream read_file;
+    path file_path; 
+    bool existance = false;
+
+    if (regex_match(hd, m, num_reg1)) {
+        path par_path = current_path.parent_path();
+        
+        read_file.open(par_path / string(m[1])); 
+
+        if (read_file.is_open()) { 
+        existance = true; 
+        file_path = par_path / string(m[1]);
+        }
+        else 
+        {
+                for (const path& p : include_directories) {
+                read_file.open(p / string(m[1]));
+                if (read_file.is_open()) {
+                file_path = p / string(m[1]);
+                existance = true;
+                } 
+            }
+            if (existance == false) {
+            cout << "unknown include file " << m[1] << " at file " << current_path.string() << " at line " << line_numb << endl; 
+            return false; }
+        }
+        }
+    else if (regex_match(hd, m, num_reg2)) {
+        path p2 = string(m[1]);
+
+        for (const path& p : include_directories) {
+            read_file.open(p / p2);
+        if (read_file.is_open()) {
+            file_path = p / p2;
+            existance = true;
+            break;
+        }
+        }
+        if (existance == false) {
+            cout << "unknown include file " << m[1] << " at file " << current_path.string() << " at line " << line_numb << endl;
+            return false; 
+        }
+    }
+    else {
+        out << hd << endl;
+    }
+    if (existance == true) {
+        Preprocessor(read_file, out, file_path, include_directories); 
+        read_file.close(); 
+    }
+    }
+
+return true;
+}
+
+bool Preprocess(const path& in_file, const path& out_file, const vector<path>& include_directories) {
+ 
+ 
+    ifstream in(in_file, ios::in | ios::binary);
+    if (!in) {
+        return false;
+    }
+
+    ofstream out(out_file, ios::out | ios::app | ios::binary);
+    if (!out) {
+        return false;
+    }
+ 
+    return Preprocessor(in, out, in_file, include_directories);
+}
 
 string GetFileContents(string file) {
     ifstream stream(file);
