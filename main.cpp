@@ -15,12 +15,94 @@ path operator""_p(const char* data, std::size_t sz) {
 }
 
 // напишите эту функцию
+bool ProcessFile(const path& file_path, ofstream& out_file, const vector<path>& include_directories, int& line_number, const path& original_file);
 bool Preprocess(const path& in_file, const path& out_file, const vector<path>& include_directories);
+
+bool Preprocess(const path& in_file, const path& out_file, const vector<path>& include_directories) {
+    ifstream in_stream(in_file);
+    if (!in_stream) {
+        return false; 
+    }
+
+    ofstream out_stream(out_file);
+    if (!out_stream) {
+        return false; 
+    }
+
+    int line_number = 1;
+    return ProcessFile(in_file, out_stream, include_directories, line_number, in_file);
+}
+
+bool ProcessFile(const path& file_path, ofstream& out_file, const vector<path>& include_directories, int& line_number, const path& original_file) {
+    if (!filesystem::exists(file_path)) {
+        cout << "unknown include file " << file_path.filename().string() << " at file " << original_file.string() << " at line " << line_number << endl;
+        return false; 
+    }
+
+    ifstream file_stream(file_path);
+    if (!file_stream) {
+        cout << "unknown include file " << file_path.filename().string() << " at file " << original_file.string() << " at line " << line_number << endl;
+        return false; 
+    }
+
+    string line;
+    while (getline(file_stream, line)) {
+        smatch match;
+        static const regex include_regex(R"(\s*#\s*include\s*\"([^\"]+)\"\s*)");
+        static const regex include_angle_regex(R"(\s*#\s*include\s*<([^>]+)>\s*)");
+
+        if (regex_match(line, match, include_regex)) {
+            path include_path = file_path.parent_path() / match[1].str();
+            bool found = filesystem::exists(include_path);
+
+            if (!found) {
+                for (const auto& dir : include_directories) {
+                    include_path = dir / match[1].str();
+                    if (filesystem::exists(include_path)) {
+                        found = true;
+                        break;
+                    }
+                }
+            }
+
+            if (!found) {
+                cout << "unknown include file " << match[1].str() << " at file " << original_file.string() << " at line " << line_number << endl;
+                return false;
+            }
+
+            int include_line_number = 1; 
+            if (!ProcessFile(include_path, out_file, include_directories, include_line_number, original_file)) {
+                return false;
+            }
+        } else if (regex_match(line, match, include_angle_regex)) {
+            bool found = false;
+            for (const auto& dir : include_directories) {
+                path include_path = dir / match[1].str();
+                if (filesystem::exists(include_path)) {
+                    found = true;
+                    int include_line_number = 1;
+                    if (!ProcessFile(include_path, out_file, include_directories, include_line_number, original_file)) {
+                        return false;
+                    }
+                    break;
+                }
+            }
+
+            if (!found) {
+                cout << "unknown include file " << match[1].str() << " at file " << original_file.string() << " at line " << line_number << endl;
+                return false;
+            }
+        } else {
+            out_file << line << endl; 
+        }
+        line_number++;
+    }
+
+    return true; 
+}
 
 string GetFileContents(string file) {
     ifstream stream(file);
-
-    // конструируем string по двум итераторам
     return {(istreambuf_iterator<char>(stream)), istreambuf_iterator<char>()};
 }
 
